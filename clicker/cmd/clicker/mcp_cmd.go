@@ -97,9 +97,10 @@ The server provides browser automation tools:
 					}
 				}
 
-				server := mcp.NewServer(version, mcp.ServerOptions{
-					ScreenshotDir: screenshotDir,
-				})
+			server := mcp.NewServer(version, mcp.ServerOptions{
+				ScreenshotDir:   screenshotDir,
+				ChromedriverURL: chromedriverURL,
+			})
 				defer server.Close()
 
 				if err := server.Run(); err != nil {

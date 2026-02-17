@@ -13,9 +13,10 @@ var version = "dev"
 
 // Global flags
 var (
-	headless   bool
-	verbose    bool
-	jsonOutput bool
+	headless        bool
+	verbose         bool
+	jsonOutput      bool
+	chromedriverURL string
 )
 
 func main() {
@@ -39,6 +40,7 @@ func main() {
 	rootCmd.PersistentFlags().BoolVar(&headless, "headless", false, "Hide browser window (visible by default)")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Enable debug logging")
 	rootCmd.PersistentFlags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
+	rootCmd.PersistentFlags().StringVar(&chromedriverURL, "chromedriver-url", "", "URL of an existing ChromeDriver (e.g., http://localhost:9515)")
 
 	// Register all commands
 	rootCmd.AddCommand(newVersionCmd())

@@ -49,6 +49,9 @@ func autoStartDaemon() error {
 	if headless {
 		args = append(args, "--headless")
 	}
+	if chromedriverURL != "" {
+		args = append(args, fmt.Sprintf("--chromedriver-url=%s", chromedriverURL))
+	}
 
 	cmd := exec.Command(exe, args...)
 	cmd.Stdout = nil

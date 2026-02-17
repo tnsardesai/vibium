@@ -49,9 +49,10 @@ func (pw *prefixWriter) Write(p []byte) (n int, err error) {
 
 // LaunchOptions contains options for launching the browser.
 type LaunchOptions struct {
-	Headless bool
-	Port     int  // Chromedriver port, 0 = auto-select
-	Verbose  bool // Show chromedriver output
+	Headless        bool
+	Port            int    // Chromedriver port, 0 = auto-select
+	Verbose         bool   // Show chromedriver output
+	ChromedriverURL string // If set, use existing chromedriver at this HTTP URL
 }
 
 // LaunchResult contains the result of launching the browser via chromedriver.
@@ -61,6 +62,7 @@ type LaunchResult struct {
 	ChromedriverCmd *exec.Cmd
 	Port            int
 	UserDataDir     string // Chrome temp profile dir — cleaned up on Close()
+	ChromedriverURL string // Set for remote sessions; used by Close() to DELETE the session
 }
 
 // sessionRequest is the payload for creating a new session.
@@ -94,7 +96,12 @@ type sessionValue struct {
 }
 
 // Launch starts chromedriver and creates a BiDi session.
+// If opts.ChromedriverURL is set, it connects to an existing chromedriver instead.
 func Launch(opts LaunchOptions) (*LaunchResult, error) {
+	if opts.ChromedriverURL != "" {
+		return connectRemote(opts)
+	}
+
 	log.Debug("launching browser", "headless", opts.Headless)
 
 	chromedriverPath, err := paths.GetChromedriverPath()
@@ -189,7 +196,55 @@ func waitForChromedriver(baseURL string, timeout time.Duration) error {
 	return fmt.Errorf("timeout waiting for chromedriver")
 }
 
-// createSession creates a new WebDriver session with BiDi enabled.
+// postSession POSTs a session request body to chromedriver and parses the response.
+// Returns sessionID, webSocketUrl, and userDataDir.
+func postSession(baseURL string, reqBody map[string]interface{}, verbose bool) (string, string, string, error) {
+	jsonBody, err := json.Marshal(reqBody)
+	if err != nil {
+		return "", "", "", err
+	}
+
+	if verbose {
+		fmt.Println("       ------- POST /session -------")
+		fmt.Printf("       --> %s\n", string(jsonBody))
+	}
+
+	resp, err := http.Post(baseURL+"/session", "application/json", bytes.NewReader(jsonBody))
+	if err != nil {
+		return "", "", "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		return "", "", "", fmt.Errorf("failed to create session: HTTP %d", resp.StatusCode)
+	}
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", "", "", fmt.Errorf("failed to read session response: %w", err)
+	}
+
+	if verbose {
+		fmt.Printf("       <-- %s\n", string(respBody))
+		fmt.Println("       ------------------------------")
+	}
+
+	var sessResp sessionResponse
+	if err := json.Unmarshal(respBody, &sessResp); err != nil {
+		return "", "", "", fmt.Errorf("failed to decode session response: %w", err)
+	}
+
+	wsURL, ok := sessResp.Value.Capabilities["webSocketUrl"].(string)
+	if !ok || wsURL == "" {
+		return "", "", "", fmt.Errorf("webSocketUrl not found in session capabilities")
+	}
+
+	userDataDir, _ := sessResp.Value.Capabilities["userDataDir"].(string)
+
+	return sessResp.Value.SessionID, wsURL, userDataDir, nil
+}
+
+// createSession builds capabilities for launching a new Chrome and posts to chromedriver.
 func createSession(baseURL, chromePath string, headless, verbose bool) (string, string, string, error) {
 	args := []string{
 		"--no-first-run",
@@ -228,8 +283,8 @@ func createSession(baseURL, chromePath string, headless, verbose bool) (string, 
 	reqBody := map[string]interface{}{
 		"capabilities": map[string]interface{}{
 			"alwaysMatch": map[string]interface{}{
-				"browserName":              "chrome",
-				"webSocketUrl":             true,
+				"browserName":  "chrome",
+				"webSocketUrl": true,
 				"unhandledPromptBehavior": map[string]interface{}{
 					"default": "ignore",
 				},
@@ -238,9 +293,9 @@ func createSession(baseURL, chromePath string, headless, verbose bool) (string, 
 					"args":            args,
 					"excludeSwitches": []string{"enable-automation"},
 					"prefs": map[string]interface{}{
-						"credentials_enable_service":                          false,
-						"profile.password_manager_enabled":                    false,
-						"profile.password_manager_leak_detection":             false,
+						"credentials_enable_service":                           false,
+						"profile.password_manager_enabled":                     false,
+						"profile.password_manager_leak_detection":              false,
 						"profile.default_content_setting_values.notifications": 2,
 					},
 				},
@@ -248,58 +303,58 @@ func createSession(baseURL, chromePath string, headless, verbose bool) (string, 
 		},
 	}
 
-	jsonBody, err := json.Marshal(reqBody)
+	return postSession(baseURL, reqBody, verbose)
+}
+
+// createSessionRemote builds capabilities for attaching to existing Chrome and posts to chromedriver.
+func createSessionRemote(baseURL string, verbose bool) (string, string, error) {
+	reqBody := map[string]interface{}{
+		"capabilities": map[string]interface{}{
+			"alwaysMatch": map[string]interface{}{
+				"webSocketUrl": true,
+				"unhandledPromptBehavior": map[string]interface{}{
+					"default": "ignore",
+				},
+			},
+		},
+	}
+	sessionID, wsURL, _, err := postSession(baseURL, reqBody, verbose)
+	return sessionID, wsURL, err
+}
+
+// connectRemote connects to an existing chromedriver and Chrome instance.
+func connectRemote(opts LaunchOptions) (*LaunchResult, error) {
+	sessionID, wsURL, err := createSessionRemote(opts.ChromedriverURL, opts.Verbose)
 	if err != nil {
-		return "", "", "", err
+		return nil, fmt.Errorf("failed to create remote session: %w", err)
 	}
-
-	if verbose {
-		fmt.Println("       ------- POST /session -------")
-		fmt.Printf("       --> %s\n", string(jsonBody))
-	}
-
-	resp, err := http.Post(baseURL+"/session", "application/json", bytes.NewReader(jsonBody))
-	if err != nil {
-		return "", "", "", err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		return "", "", "", fmt.Errorf("failed to create session: HTTP %d", resp.StatusCode)
-	}
-
-	// Read response body for logging and parsing
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", "", "", fmt.Errorf("failed to read session response: %w", err)
-	}
-
-	if verbose {
-		fmt.Printf("       <-- %s\n", string(respBody))
-		fmt.Println("       ------------------------------")
-	}
-
-	var sessResp sessionResponse
-	if err := json.Unmarshal(respBody, &sessResp); err != nil {
-		return "", "", "", fmt.Errorf("failed to decode session response: %w", err)
-	}
-
-	wsURL, ok := sessResp.Value.Capabilities["webSocketUrl"].(string)
-	if !ok || wsURL == "" {
-		return "", "", "", fmt.Errorf("webSocketUrl not found in session capabilities")
-	}
-
-	// Extract the Chrome user-data-dir so we can clean it up on Close()
-	userDataDir, _ := sessResp.Value.Capabilities["userDataDir"].(string)
-
-	return sessResp.Value.SessionID, wsURL, userDataDir, nil
+	log.Info("remote browser attached", "sessionId", sessionID, "wsUrl", wsURL)
+	return &LaunchResult{
+		WebSocketURL:    wsURL,
+		SessionID:       sessionID,
+		ChromedriverCmd: nil,
+		Port:            0,
+		ChromedriverURL: opts.ChromedriverURL,
+	}, nil
 }
 
 // Close terminates a chromedriver session and process.
 func (r *LaunchResult) Close() error {
 	log.Debug("closing browser", "sessionId", r.SessionID)
 
-	// Delete session first (tells chromedriver to quit Chrome gracefully).
+	// Remote session: DELETE the session from chromedriver to detach cleanly,
+	// but don't kill any processes (we didn't start them).
+	if r.ChromedriverURL != "" && r.SessionID != "" {
+		deleteURL := fmt.Sprintf("%s/session/%s", r.ChromedriverURL, r.SessionID)
+		req, _ := http.NewRequest(http.MethodDelete, deleteURL, nil)
+		if req != nil {
+			client := &http.Client{Timeout: 5 * time.Second}
+			client.Do(req)
+		}
+		return nil
+	}
+
+	// Local session: Delete session first (tells chromedriver to quit Chrome gracefully).
 	// Skip on Windows: the DELETE can cause chromedriver to exit before
 	// taskkill /T runs, orphaning Chrome children. taskkill /T handles cleanup.
 	if !skipGracefulShutdown() && r.SessionID != "" && r.Port > 0 {

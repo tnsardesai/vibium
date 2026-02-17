@@ -19,15 +19,16 @@ import (
 
 // Handlers manages browser session state and executes tool calls.
 type Handlers struct {
-	launchResult  *browser.LaunchResult
-	client        *bidi.Client
-	conn          *bidi.Connection
-	screenshotDir string
-	headless      bool
-	refMap        map[string]string // @e1 -> CSS selector
-	lastMap       string            // last map output (for diff)
-	traceRecorder *traceRecorder
-	downloadDir   string
+	launchResult    *browser.LaunchResult
+	client          *bidi.Client
+	conn            *bidi.Connection
+	screenshotDir   string
+	headless        bool
+	chromedriverURL string
+	refMap          map[string]string // @e1 -> CSS selector
+	lastMap         string            // last map output (for diff)
+	traceRecorder   *traceRecorder
+	downloadDir     string
 }
 
 // traceRecorder records browser traces (screenshots + snapshots).
@@ -112,10 +113,11 @@ func (t *traceRecorder) writeZip(path string) error {
 // NewHandlers creates a new Handlers instance.
 // screenshotDir specifies where screenshots are saved. If empty, file saving is disabled.
 // headless controls whether the browser is launched in headless mode.
-func NewHandlers(screenshotDir string, headless bool) *Handlers {
+func NewHandlers(screenshotDir string, headless bool, chromedriverURL string) *Handlers {
 	return &Handlers{
-		screenshotDir: screenshotDir,
-		headless:      headless,
+		screenshotDir:   screenshotDir,
+		headless:        headless,
+		chromedriverURL: chromedriverURL,
 	}
 }
 
@@ -323,7 +325,10 @@ func (h *Handlers) browserLaunch(args map[string]interface{}) (*ToolsCallResult,
 	}
 
 	// Launch browser
-	launchResult, err := browser.Launch(browser.LaunchOptions{Headless: useHeadless})
+	launchResult, err := browser.Launch(browser.LaunchOptions{
+		Headless:        useHeadless,
+		ChromedriverURL: h.chromedriverURL,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to launch browser: %w", err)
 	}

@@ -65,14 +65,16 @@ type bidiResponse struct {
 
 // Router manages browser sessions for connected clients.
 type Router struct {
-	sessions sync.Map // map[uint64]*BrowserSession (client ID -> session)
-	headless bool
+	sessions        sync.Map // map[uint64]*BrowserSession (client ID -> session)
+	headless        bool
+	chromedriverURL string
 }
 
 // NewRouter creates a new router.
-func NewRouter(headless bool) *Router {
+func NewRouter(headless bool, chromedriverURL string) *Router {
 	return &Router{
-		headless: headless,
+		headless:        headless,
+		chromedriverURL: chromedriverURL,
 	}
 }
 
@@ -83,7 +85,8 @@ func (r *Router) OnClientConnect(client *ClientConn) {
 
 	// Launch browser
 	launchResult, err := browser.Launch(browser.LaunchOptions{
-		Headless: r.headless,
+		Headless:        r.headless,
+		ChromedriverURL: r.chromedriverURL,
 	})
 	if err != nil {
 		fmt.Printf("[router] Failed to launch browser for client %d: %v\n", client.ID, err)

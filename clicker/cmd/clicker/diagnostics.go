@@ -76,7 +76,7 @@ func newLaunchTestCmd() *cobra.Command {
 		Use:   "launch-test",
 		Short: "Launch browser via chromedriver and print BiDi WebSocket URL",
 		Run: func(cmd *cobra.Command, args []string) {
-			result, err := browser.Launch(browser.LaunchOptions{Headless: headless})
+			result, err := browser.Launch(browser.LaunchOptions{Headless: headless, ChromedriverURL: chromedriverURL})
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 				os.Exit(1)

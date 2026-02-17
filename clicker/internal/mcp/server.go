@@ -124,7 +124,8 @@ type Server struct {
 
 // ServerOptions configures the MCP server.
 type ServerOptions struct {
-	ScreenshotDir string // Directory for saving screenshots (empty = disabled)
+	ScreenshotDir   string // Directory for saving screenshots (empty = disabled)
+	ChromedriverURL string // If set, use existing chromedriver at this HTTP URL
 }
 
 // NewServer creates a new MCP server.
@@ -132,7 +133,7 @@ func NewServer(version string, opts ServerOptions) *Server {
 	return &Server{
 		reader:   bufio.NewReader(os.Stdin),
 		writer:   os.Stdout,
-		handlers: NewHandlers(opts.ScreenshotDir, false),
+		handlers: NewHandlers(opts.ScreenshotDir, false, opts.ChromedriverURL),
 		version:  version,
 	}
 }

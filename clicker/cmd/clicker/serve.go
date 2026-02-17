@@ -31,7 +31,7 @@ func newServeCmd() *cobra.Command {
 			fmt.Printf("Starting Vibium proxy server on port %d...\n", port)
 
 			// Create router to manage browser sessions
-			router := proxy.NewRouter(headless)
+			router := proxy.NewRouter(headless, chromedriverURL)
 
 			server := proxy.NewServer(
 				proxy.WithPort(port),

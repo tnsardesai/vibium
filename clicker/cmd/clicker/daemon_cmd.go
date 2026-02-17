@@ -146,10 +146,11 @@ func runDaemonForeground(idleTimeout time.Duration) {
 	}
 
 	d := daemon.New(daemon.Options{
-		Version:       version,
-		ScreenshotDir: screenshotDir,
-		Headless:      headless,
-		IdleTimeout:   idleTimeout,
+		Version:         version,
+		ScreenshotDir:   screenshotDir,
+		Headless:        headless,
+		IdleTimeout:     idleTimeout,
+		ChromedriverURL: chromedriverURL,
 	})
 
 	// Install signal handler for clean shutdown
@@ -192,6 +193,9 @@ func daemonize(idleTimeout time.Duration) {
 		fmt.Sprintf("--idle-timeout=%s", idleTimeout)}
 	if headless {
 		args = append(args, "--headless")
+	}
+	if chromedriverURL != "" {
+		args = append(args, fmt.Sprintf("--chromedriver-url=%s", chromedriverURL))
 	}
 
 	cmd := exec.Command(exe, args...)

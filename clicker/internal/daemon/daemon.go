@@ -29,16 +29,17 @@ type Daemon struct {
 
 // Options configures a new Daemon.
 type Options struct {
-	Version       string
-	ScreenshotDir string
-	Headless      bool
-	IdleTimeout   time.Duration
+	Version         string
+	ScreenshotDir   string
+	Headless        bool
+	IdleTimeout     time.Duration
+	ChromedriverURL string
 }
 
 // New creates a new Daemon instance.
 func New(opts Options) *Daemon {
 	return &Daemon{
-		handlers:     mcp.NewHandlers(opts.ScreenshotDir, opts.Headless),
+		handlers:     mcp.NewHandlers(opts.ScreenshotDir, opts.Headless, opts.ChromedriverURL),
 		version:      opts.Version,
 		idleTimeout:  opts.IdleTimeout,
 		startTime:    time.Now(),
